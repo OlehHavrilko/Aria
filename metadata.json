@@ -1,0 +1,13 @@
+{
+  "name": "ARIA",
+  "description": "ARIA — Autonomous Runtime Intelligence Agent. Unified AI agent with integrated Linux runtime.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "terminal",
+    "ai_agent",
+    "script_execution"
+  ]
+}
