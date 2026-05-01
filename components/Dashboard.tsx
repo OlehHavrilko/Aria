@@ -9,28 +9,40 @@ import { motion, AnimatePresence } from 'motion/react';
 const Terminal = dynamic(() => import('@/components/Terminal'), { ssr: false });
 const FileExplorer = dynamic(() => import('@/components/FileExplorer'), { ssr: false });
 const InfoPanel = dynamic(() => import('@/components/InfoPanel'), { ssr: false });
+const SettingsPanel = dynamic(() => import('@/components/SettingsPanel'), { ssr: false });
 
 export default function Dashboard() {
-  const [apiKey, setApiKey] = useState('');
+  const [keys, setKeys] = useState<Record<string, string>>({
+    gemini: '',
+    anthropic: '',
+    openai: '',
+    groq: ''
+  });
   const [yoloMode, setYoloMode] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [activeTab, setActiveTab] = useState('orchestrator');
   const [theme, setTheme] = useState('blue');
 
   useEffect(() => {
-    const savedKey = localStorage.getItem('omnishell_key');
+    const savedKeys = localStorage.getItem('aria_keys');
     const savedYolo = localStorage.getItem('omnishell_yolo') === 'true';
     const savedTheme = localStorage.getItem('aria_theme') || 'blue';
     
-    if (savedKey) setApiKey(savedKey);
+    if (savedKeys) {
+      try {
+        setKeys(JSON.parse(savedKeys));
+      } catch (e) {
+        console.error("Failed to parse keys");
+      }
+    }
     setYoloMode(savedYolo);
     setTheme(savedTheme);
     document.documentElement.setAttribute('data-theme', savedTheme);
   }, []);
 
-  const saveKey = (key: string) => {
-    setApiKey(key);
-    localStorage.setItem('omnishell_key', key);
+  const saveKeys = (newKeys: Record<string, string>) => {
+    setKeys(newKeys);
+    localStorage.setItem('aria_keys', JSON.stringify(newKeys));
   };
 
   const toggleYolo = () => {
@@ -108,7 +120,7 @@ export default function Dashboard() {
               >
                 {/* 1. Agent Panel (The Brain) */}
                 <div className="col-span-12 lg:col-span-3 h-full border-r border-brand-line">
-                  <AgentPanel apiKey={apiKey} yoloMode={yoloMode} />
+                  <AgentPanel keys={keys} yoloMode={yoloMode} />
                 </div>
                 
                 {/* 2. Terminal (The Execution) */}
@@ -177,86 +189,34 @@ export default function Dashboard() {
         </section>
 
         {/* Initial Authorization */}
-        {!apiKey && (
+        {Object.values(keys).every(k => !k) && (
           <div className="absolute inset-0 bg-brand-bg/95 backdrop-blur-3xl z-[100] flex items-center justify-center p-6 text-center">
              <div className="max-w-sm w-full p-12 border border-brand-line bg-black flex flex-col items-center">
                 <div className="text-6xl font-black text-brand-accent mb-16 select-none">Λ</div>
                 <h2 className="text-xs font-bold mb-12 tracking-[0.4em] uppercase opacity-40">System Lock</h2>
-                <input 
-                  type="password" 
-                  placeholder="AUTHORIZATION KEY (GEMINI API)..." 
-                  className="w-full bg-black border border-brand-line px-4 py-4 mb-8 focus:border-brand-accent outline-none text-[10px] font-mono text-center tracking-widest placeholder:opacity-10"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') saveKey((e.target as HTMLInputElement).value);
-                  }}
-                />
+                <div className="w-full space-y-4 mb-8">
+                  <KeyInput placeholder="GEMINI API KEY..." onSave={(val) => saveKeys({...keys, gemini: val})} />
+                </div>
+                <p className="text-[9px] opacity-20 italic mb-8 uppercase tracking-widest">Provide at least one core key to initialize</p>
                 <button 
-                  onClick={(e) => {
-                    const input = (e.currentTarget.previousSibling as HTMLInputElement).value;
-                    if (input) saveKey(input);
-                  }}
-                  className="w-full border border-brand-line py-4 text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-brand-accent hover:border-brand-accent hover:text-white transition-all transition-transform duration-500"
+                  onClick={() => setShowSettings(true)}
+                  className="w-full border border-brand-line py-4 text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-brand-accent hover:border-brand-accent hover:text-white transition-all"
                 >
-                  Confirm Neural Link
+                  Configure Providers
                 </button>
              </div>
           </div>
         )}
 
         {/* Global Configuration Modal */}
-        <AnimatePresence>
-          {showSettings && (
-            <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowSettings(false)} className="absolute inset-0 bg-black/90 backdrop-blur-sm" />
-              <motion.div 
-                initial={{ opacity: 0, y: 10 }} 
-                animate={{ opacity: 1, y: 0 }} 
-                exit={{ opacity: 0, y: 10 }} 
-                className="relative w-full max-w-sm border border-brand-line bg-black p-10"
-              >
-                <div className="flex items-center justify-between mb-12">
-                  <h3 className="text-[10px] font-bold tracking-[0.3em] uppercase opacity-40">Configuration</h3>
-                  <button onClick={() => setShowSettings(false)} className="opacity-20 hover:opacity-100 transition-opacity text-sm">✕</button>
-                </div>
-
-                <div className="space-y-10">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-widest">YOLO Protocols</p>
-                      <p className="text-[9px] opacity-30 mt-1 font-mono italic">Direct execution without traps</p>
-                    </div>
-                    <button 
-                      onClick={toggleYolo}
-                      className={`w-8 h-4 rounded-none relative border transition-colors ${yoloMode ? 'bg-brand-error border-brand-error' : 'bg-transparent border-brand-line'}`}
-                    >
-                      <motion.div animate={{ x: yoloMode ? 16 : 0 }} className="w-3 h-3 bg-white absolute top-0" />
-                    </button>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-widest">System Theme</p>
-                      <p className="text-[9px] opacity-30 mt-1 font-mono italic">Primary accent hue</p>
-                    </div>
-                    <button 
-                      onClick={toggleTheme} 
-                      className="text-[10px] font-bold uppercase tracking-widest text-brand-accent border border-brand-accent/30 px-4 py-1.5 hover:bg-brand-accent/5 transition-all"
-                    >
-                      {theme}
-                    </button>
-                  </div>
-                </div>
-
-                <button 
-                  onClick={() => setShowSettings(false)}
-                  className="w-full mt-16 border border-brand-line py-4 text-[10px] font-bold uppercase tracking-[0.3em] hover:bg-white hover:text-black transition-all"
-                >
-                  Sync Core
-                </button>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
+        <SettingsPanel 
+          isOpen={showSettings} 
+          onClose={() => setShowSettings(false)} 
+          onUpdate={(s) => {
+            setKeys(s.keys);
+            setYoloMode(s.agent.yoloMode);
+          }}
+        />
       </main>
     </div>
   );
@@ -293,16 +253,18 @@ function DashboardCTA({ label, sub, icon, onClick }: { label: string; sub: strin
   );
 }
 
-const StatusCard = ({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) => {
+function KeyInput({ placeholder, onSave }: { placeholder: string; onSave: (val: string) => void }) {
+  const [val, setVal] = useState('');
   return (
-    <div className="p-4 border border-brand-line flex items-center gap-4 bg-black/20">
-      <div className="text-brand-accent opacity-60">
-        {icon}
-      </div>
-      <div>
-        <p className="text-[8px] uppercase font-bold tracking-[0.2em] opacity-30 mb-1">{label}</p>
-        <p className="text-[10px] font-mono font-bold">{value}</p>
-      </div>
-    </div>
+    <input 
+      type="password" 
+      placeholder={placeholder} 
+      value={val}
+      onChange={(e) => setVal(e.target.value)}
+      className="w-full bg-black border border-brand-line px-4 py-4 focus:border-brand-accent outline-none text-[10px] font-mono text-center tracking-widest placeholder:opacity-10"
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') onSave(val);
+      }}
+    />
   );
-};
+}
