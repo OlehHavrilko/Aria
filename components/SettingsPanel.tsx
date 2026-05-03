@@ -4,19 +4,26 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, 
+  Settings, 
+  Shield, 
   Database, 
-  Cpu, 
-  ShieldAlert, 
-  Server, 
-  Terminal, 
-  Key, 
-  ShieldCheck, 
-  Trash2, 
-  RefreshCcw,
-  Zap,
-  Lock
+  CheckCircle2, 
+  XCircle, 
+  Loader2,
+  Globe,
+  Lock,
+  ArrowRight,
+  Terminal,
+  Server
 } from 'lucide-react';
-import { ProviderType } from '@/lib/ai';
+import { ProviderType, testConnection as verifyConnection } from '@/lib/ai';
+
+const PROVIDERS = [
+  { id: 'gemini', name: 'Google Gemini', color: '#2f81f7', model: 'gemini-2.0-flash' },
+  { id: 'anthropic', name: 'Anthropic Claude', color: '#f97316', model: 'claude-3-5-sonnet-latest' },
+  { id: 'openai', name: 'OpenAI GPT', color: '#238636', model: 'gpt-4o' },
+  { id: 'groq', name: 'Groq Llama', color: '#a855f7', model: 'llama-3.3-70b-specdec' },
+];
 
 interface SettingsPanelProps {
   isOpen: boolean;
@@ -24,17 +31,10 @@ interface SettingsPanelProps {
   onUpdate: (settings: any) => void;
 }
 
-const PROVIDERS = [
-  { id: 'gemini', name: 'Google Gemini', color: '#3b82f6' },
-  { id: 'anthropic', name: 'Anthropic Claude', color: '#f97316' },
-  { id: 'openai', name: 'OpenAI GPT', color: '#10b981' },
-  { id: 'groq', name: 'Groq Llama', color: '#a855f7' },
-];
-
 export default function SettingsPanel({ isOpen, onClose, onUpdate }: SettingsPanelProps) {
-  const [activeTab, setActiveTab] = useState<'providers' | 'runtime' | 'agent'>('providers');
+  const [activeTab, setActiveTab] = useState<'providers' | 'agent' | 'runtime'>('providers');
   const [settings, setSettings] = useState({
-    keys: { gemini: '', anthropic: '', openai: '', groq: '' },
+    keys: { gemini: '', anthropic: '', openai: '', groq: '', openrouter: '', cerebras: '', ollama: '', mistral: '' },
     runtime: 'sandbox',
     ssh: { host: '', port: '22', username: '', key: '' },
     agent: {
@@ -46,12 +46,12 @@ export default function SettingsPanel({ isOpen, onClose, onUpdate }: SettingsPan
   });
 
   const [isTesting, setIsTesting] = useState<string | null>(null);
+  const [testResults, setTestResults] = useState<Record<string, { status: 'success' | 'error', latency?: number }>>({});
 
   useEffect(() => {
     const saved = localStorage.getItem('aria_full_settings');
     if (saved) {
       try {
-        // In a real app, we would decrypt here using the passphrase
         setSettings(JSON.parse(saved));
       } catch (e) {
         console.error("Failed to load settings");
@@ -61,248 +61,221 @@ export default function SettingsPanel({ isOpen, onClose, onUpdate }: SettingsPan
 
   const saveSettings = (newSettings = settings) => {
     setSettings(newSettings);
-    // In a real app, we would encrypt here
     localStorage.setItem('aria_full_settings', JSON.stringify(newSettings));
     onUpdate(newSettings);
   };
 
   const testConnection = async (provider: string) => {
     setIsTesting(provider);
-    // Simulate connection test
-    setTimeout(() => {
-      setIsTesting(null);
-      alert(`${provider.toUpperCase()} connection established.`);
-    }, 1500);
+    const pInfo = PROVIDERS.find(p => p.id === provider);
+    const apiKey = (settings.keys as any)[provider] || '';
+    
+    const result = await verifyConnection(provider as ProviderType, apiKey, pInfo?.model || '');
+    
+    setIsTesting(null);
+    setTestResults(prev => ({
+      ...prev,
+      [provider]: result.success ? { status: 'success', latency: result.latency } : { status: 'error' }
+    }));
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[300] flex items-center justify-center p-6">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm">
       <motion.div 
-        initial={{ opacity: 0 }} 
-        animate={{ opacity: 1 }} 
-        exit={{ opacity: 0 }} 
-        onClick={onClose} 
-        className="absolute inset-0 bg-black/90 backdrop-blur-md" 
-      />
-      
-      <motion.div 
-        initial={{ scale: 0.95, opacity: 0, y: 20 }} 
-        animate={{ scale: 1, opacity: 1, y: 0 }} 
-        exit={{ scale: 0.95, opacity: 0, y: 20 }} 
-        className="relative w-full max-w-2xl h-[600px] border border-brand-line bg-black flex flex-col overflow-hidden"
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="w-full max-w-4xl h-[650px] border border-brand-line bg-[#0d1117] flex flex-col shadow-2xl rounded-lg overflow-hidden"
       >
         {/* Header */}
-        <div className="px-8 py-6 border-b border-brand-line flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="text-2xl font-black text-brand-accent tracking-tighter">Λ</div>
-            <div className="h-4 w-px bg-brand-line" />
-            <h2 className="text-[10px] font-bold tracking-[0.3em] uppercase opacity-40">System Configuration</h2>
+        <div className="px-8 h-16 border-b border-brand-line flex items-center justify-between bg-black/40">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-brand-accent/10 rounded-sm">
+              <Settings size={18} className="text-brand-accent" />
+            </div>
+            <h2 className="text-sm font-bold uppercase tracking-widest">System Configuration</h2>
           </div>
-          <button onClick={onClose} className="p-2 opacity-20 hover:opacity-100 transition-opacity">
+          <button onClick={onClose} className="p-2 opacity-40 hover:opacity-100 transition-opacity">
             <X size={18} />
           </button>
         </div>
 
-        {/* Tabs */}
-        <div className="flex border-b border-brand-line">
-          <TabButton active={activeTab === 'providers'} onClick={() => setActiveTab('providers')} label="Providers" icon={<Key size={14} />} />
-          <TabButton active={activeTab === 'runtime'} onClick={() => setActiveTab('runtime')} label="Runtime" icon={<Server size={14} />} />
-          <TabButton active={activeTab === 'agent'} onClick={() => setActiveTab('agent')} label="Agent" icon={<Cpu size={14} />} />
-        </div>
+        <div className="flex-1 flex overflow-hidden">
+          {/* Tabs Sidebar */}
+          <div className="w-64 border-r border-brand-line bg-black/20 p-6 space-y-2">
+             <TabButton active={activeTab === 'providers'} onClick={() => setActiveTab('providers')} icon={<Globe size={16} />} label="AI Providers" />
+             <TabButton active={activeTab === 'agent'} onClick={() => setActiveTab('agent')} icon={<Shield size={16} />} label="Agent Security" />
+             <TabButton active={activeTab === 'runtime'} onClick={() => setActiveTab('runtime')} icon={<Terminal size={16} />} label="Runtime Env" />
+          </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-10 custom-scrollbar">
-          <AnimatePresence mode="wait">
-            {activeTab === 'providers' && (
-              <motion.div key="providers" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }} className="space-y-10">
-                <div className="grid grid-cols-1 gap-8">
-                  {PROVIDERS.map(p => (
-                    <div key={p.id} className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: p.color }} />
-                          <label className="text-[10px] font-bold uppercase tracking-widest opacity-60 font-mono">{p.name}</label>
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto p-10 custom-scrollbar">
+             {activeTab === 'providers' && (
+               <div className="space-y-8">
+                  <header>
+                    <h3 className="text-lg font-bold mb-2">Neural Links</h3>
+                    <p className="text-xs opacity-40">Configure API keys for various AI models. Keys are stored locally in the vault.</p>
+                  </header>
+
+                  <div className="grid grid-cols-1 gap-4">
+                    {PROVIDERS.map(p => (
+                      <div key={p.id} className="p-4 border border-brand-line bg-black/20 hover:border-brand-accent/20 transition-all rounded-sm flex items-center justify-between gap-6">
+                        <div className="flex items-center gap-4 min-w-[120px]">
+                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }} />
+                          <span className="text-[11px] font-bold uppercase tracking-wider">{p.name}</span>
                         </div>
-                        <button 
-                          onClick={() => testConnection(p.id)}
-                          disabled={!settings.keys[p.id as keyof typeof settings.keys]}
-                          className="text-[9px] font-bold uppercase tracking-widest text-brand-accent hover:opacity-60 disabled:opacity-10 transition-opacity flex items-center gap-2"
-                        >
-                          {isTesting === p.id ? <RefreshCcw size={10} className="animate-spin" /> : <ShieldCheck size={10} />}
-                          Test Link
-                        </button>
+                        <input 
+                          type="password"
+                          placeholder="PASTE API KEY..."
+                          className="flex-1 bg-black border border-brand-line px-3 py-2 text-[10px] font-mono focus:border-brand-accent outline-none rounded-sm transition-colors"
+                          value={(settings.keys as any)[p.id]}
+                          onChange={(e) => {
+                            const newSettings = { ...settings, keys: { ...settings.keys, [p.id]: e.target.value } };
+                            saveSettings(newSettings);
+                          }}
+                        />
+                        <div className="flex items-center gap-4 min-w-[140px]">
+                          {testResults[p.id] && (
+                            <div className={`flex items-center gap-2 text-[9px] font-bold uppercase tracking-widest ${testResults[p.id].status === 'success' ? 'text-brand-success' : 'text-brand-error'}`}>
+                              {testResults[p.id].status === 'success' ? <><CheckCircle2 size={12} /> {testResults[p.id].latency}MS</> : <><XCircle size={12} /> FAILED</>}
+                            </div>
+                          )}
+                          <button 
+                            onClick={() => testConnection(p.id)}
+                            disabled={isTesting !== null || !(settings.keys as any)[p.id]}
+                            className="bg-brand-accent/10 border border-brand-accent/20 px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest text-brand-accent hover:bg-brand-accent hover:text-white disabled:opacity-10 transition-all rounded-sm"
+                          >
+                            {isTesting === p.id ? <Loader2 size={12} className="animate-spin" /> : 'TEST LINK'}
+                          </button>
+                        </div>
                       </div>
-                      <input 
-                        type="password"
-                        value={settings.keys[p.id as keyof typeof settings.keys]}
+                    ))}
+                  </div>
+               </div>
+             )}
+
+             {activeTab === 'agent' && (
+               <div className="space-y-8 max-w-lg">
+                  <header>
+                    <h3 className="text-lg font-bold mb-2">Security Enforcement</h3>
+                    <p className="text-xs opacity-40">Define how the agent interacts with the environment.</p>
+                  </header>
+
+                  <div className="space-y-6">
+                    <div className="p-6 border-2 border-brand-error/20 bg-brand-error/5 rounded-sm">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <CheckCircle2 size={20} className="text-brand-error" />
+                          <div>
+                            <h4 className="text-xs font-bold uppercase tracking-widest text-brand-error">YOLO Mode (Auto-Approve)</h4>
+                            <p className="text-[10px] opacity-60">Allows agent to execute all commands without confirmation.</p>
+                          </div>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input 
+                            type="checkbox" 
+                            className="sr-only peer"
+                            checked={settings.agent.yoloMode}
+                            onChange={(e) => {
+                              const newSettings = { ...settings, agent: { ...settings.agent, yoloMode: e.target.checked } };
+                              saveSettings(newSettings);
+                            }}
+                          />
+                          <div className="w-9 h-5 bg-black border border-brand-line peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-brand-line after:border-brand-line after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-error peer-checked:after:bg-white"></div>
+                        </label>
+                      </div>
+                       <p className="text-[9px] font-bold text-brand-error/40 uppercase tracking-widest">⚠️ Use with extreme caution. Disables safety gates.</p>
+                    </div>
+
+                    <div className="space-y-4">
+                      <label className="text-[11px] font-bold uppercase tracking-widest opacity-60">Custom System Instruction Override</label>
+                      <textarea 
+                        className="w-full h-40 bg-black border border-brand-line p-4 text-[11px] font-mono focus:border-brand-accent outline-none resize-none rounded-sm"
+                        placeholder="Define agent's prime directive..."
+                        value={settings.agent.systemPrompt}
                         onChange={(e) => {
-                          const newKeys = { ...settings.keys, [p.id]: e.target.value };
-                          saveSettings({ ...settings, keys: newKeys });
+                          const newSettings = { ...settings, agent: { ...settings.agent, systemPrompt: e.target.value } };
+                          saveSettings(newSettings);
                         }}
-                        placeholder={`ENTER ${p.name.toUpperCase()} API KEY...`}
-                        className="w-full bg-black border border-brand-line px-4 py-3 focus:border-brand-accent outline-none text-[10px] font-mono tracking-widest placeholder:opacity-10"
                       />
                     </div>
-                  ))}
-                </div>
-              </motion.div>
-            )}
+                  </div>
+               </div>
+             )}
 
-            {activeTab === 'runtime' && (
-              <motion.div key="runtime" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }} className="space-y-12">
-                <div className="grid grid-cols-2 gap-4">
-                  <RuntimeOption 
-                    active={settings.runtime === 'sandbox'} 
-                    onClick={() => saveSettings({ ...settings, runtime: 'sandbox' })} 
-                    icon={<Database size={18} />} 
-                    label="Isolated Sandbox"
-                    sub="Alpine Linux Container"
-                  />
-                  <RuntimeOption 
-                    active={settings.runtime === 'ssh'} 
-                    onClick={() => saveSettings({ ...settings, runtime: 'ssh' })} 
-                    icon={<Terminal size={18} />} 
-                    label="Custom SSH"
-                    sub="Connect to your own shell"
-                  />
-                </div>
+             {activeTab === 'runtime' && (
+               <div className="space-y-10">
+                  <header>
+                    <h3 className="text-lg font-bold mb-2">Execution Layer</h3>
+                    <p className="text-xs opacity-40">Choose where the shell commands are executed.</p>
+                  </header>
 
-                {settings.runtime === 'ssh' && (
-                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="grid grid-cols-2 gap-6 pt-6 border-t border-brand-line">
-                    <Field label="Host" value={settings.ssh.host} onChange={(v) => saveSettings({...settings, ssh: {...settings.ssh, host: v}})} />
-                    <Field label="Port" value={settings.ssh.port} onChange={(v) => saveSettings({...settings, ssh: {...settings.ssh, port: v}})} />
-                    <Field label="Username" value={settings.ssh.username} onChange={(v) => saveSettings({...settings, ssh: {...settings.ssh, username: v}})} />
-                    <div className="col-span-2">
-                       <Field label="Private Key" value={settings.ssh.key} onChange={(v) => saveSettings({...settings, ssh: {...settings.ssh, key: v}})} textarea />
-                    </div>
-                  </motion.div>
-                )}
-              </motion.div>
-            )}
+                  <div className="grid grid-cols-2 gap-4">
+                     <button 
+                        onClick={() => saveSettings({ ...settings, runtime: 'sandbox' })}
+                        className={`p-6 border flex flex-col items-center text-center gap-4 transition-all rounded-sm ${settings.runtime === 'sandbox' ? 'border-brand-accent bg-brand-accent/5' : 'border-brand-line opacity-40 hover:opacity-100 bg-black/20'}`}
+                     >
+                        <Database size={24} className={settings.runtime === 'sandbox' ? 'text-brand-accent' : ''} />
+                        <div>
+                           <h4 className="text-[11px] font-bold uppercase tracking-widest mb-1">Secure Sandbox</h4>
+                           <p className="text-[10px] opacity-40 font-mono italic">Isolated Alpine Linux Hub</p>
+                        </div>
+                     </button>
+                     <button 
+                        onClick={() => saveSettings({ ...settings, runtime: 'ssh' })}
+                        className={`p-6 border flex flex-col items-center text-center gap-4 transition-all rounded-sm ${settings.runtime === 'ssh' ? 'border-brand-accent bg-brand-accent/5' : 'border-brand-line opacity-40 hover:opacity-100 bg-black/20'}`}
+                     >
+                        <Server size={24} className={settings.runtime === 'ssh' ? 'text-brand-accent' : ''} />
+                        <div>
+                           <h4 className="text-[11px] font-bold uppercase tracking-widest mb-1">Custom SSH Host</h4>
+                           <p className="text-[10px] opacity-40 font-mono italic">Remote System Tunnel</p>
+                        </div>
+                     </button>
+                  </div>
 
-            {activeTab === 'agent' && (
-              <motion.div key="agent" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }} className="space-y-12">
-                <div className="space-y-4">
-                  <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Directives</label>
-                  <textarea 
-                    value={settings.agent.systemPrompt}
-                    onChange={(e) => saveSettings({ ...settings, agent: { ...settings.agent, systemPrompt: e.target.value }})}
-                    placeholder="Override default character instructions..."
-                    className="w-full bg-black border border-brand-line p-4 min-h-[120px] focus:border-brand-accent outline-none text-[10px] font-mono leading-relaxed"
-                  />
-                </div>
-
-                <div className="space-y-6">
-                   <div className="flex items-center justify-between">
-                     <div>
-                       <p className="text-[10px] font-bold uppercase tracking-widest">YOLO Protocols</p>
-                       <p className="text-[9px] opacity-30 mt-1 italic font-mono">Bypass safety confirmation traps</p>
-                     </div>
-                     <Toggle 
-                        active={settings.agent.yoloMode} 
-                        onToggle={() => saveSettings({ ...settings, agent: { ...settings.agent, yoloMode: !settings.agent.yoloMode }})} 
-                        danger
-                      />
-                   </div>
-
-                   <div className="flex items-center justify-between">
-                     <div>
-                       <p className="text-[10px] font-bold uppercase tracking-widest">Neural Memory</p>
-                       <p className="text-[9px] opacity-30 mt-1 italic font-mono">Retain context between sessions</p>
-                     </div>
-                     <Toggle 
-                        active={settings.agent.memory} 
-                        onToggle={() => saveSettings({ ...settings, agent: { ...settings.agent, memory: !settings.agent.memory }})} 
-                      />
-                   </div>
-                </div>
-
-                <div className="pt-8 border-t border-brand-line">
-                   <p className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-4 flex items-center gap-2">
-                     <Lock size={12} /> Vault Encryption
-                   </p>
-                   <input 
-                      type="password"
-                      value={settings.passphrase}
-                      onChange={(e) => saveSettings({ ...settings, passphrase: e.target.value })}
-                      placeholder="SET MASTER PASSPHRASE FOR LOCAL ENCRYPTION..."
-                      className="w-full bg-black border border-brand-line px-4 py-3 focus:border-brand-accent outline-none text-[10px] font-mono tracking-widest placeholder:opacity-10"
-                   />
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        {/* Footer */}
-        <div className="px-8 py-6 border-t border-brand-line flex justify-end gap-4 bg-black">
-          <button 
-            onClick={onClose}
-            className="px-8 py-3 text-[10px] font-bold uppercase tracking-widest hover:bg-white hover:text-black border border-brand-line transition-all"
-          >
-            Apply & Close
-          </button>
+                  {settings.runtime === 'ssh' && (
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 pt-6 border-t border-brand-line">
+                       <div className="grid grid-cols-2 gap-6">
+                          <div className="space-y-2">
+                             <label className="text-[10px] uppercase font-bold opacity-40">Remote Host</label>
+                             <input className="w-full bg-black border border-brand-line px-3 py-2 text-[10px] font-mono outline-none focus:border-brand-accent" value={settings.ssh.host} onChange={(e) => saveSettings({...settings, ssh: {...settings.ssh, host: e.target.value}})} />
+                          </div>
+                          <div className="space-y-2">
+                             <label className="text-[10px] uppercase font-bold opacity-40">SSH Port</label>
+                             <input className="w-full bg-black border border-brand-line px-3 py-2 text-[10px] font-mono outline-none focus:border-brand-accent" value={settings.ssh.port} onChange={(e) => saveSettings({...settings, ssh: {...settings.ssh, port: e.target.value}})} />
+                          </div>
+                          <div className="space-y-2">
+                             <label className="text-[10px] uppercase font-bold opacity-40">Auth Username</label>
+                             <input className="w-full bg-black border border-brand-line px-3 py-2 text-[10px] font-mono outline-none focus:border-brand-accent" value={settings.ssh.username} onChange={(e) => saveSettings({...settings, ssh: {...settings.ssh, username: e.target.value}})} />
+                          </div>
+                       </div>
+                       <div className="space-y-2">
+                          <label className="text-[10px] uppercase font-bold opacity-40">Private Key (Ed25519/RSA)</label>
+                          <textarea className="w-full h-32 bg-black border border-brand-line p-3 text-[10px] font-mono outline-none focus:border-brand-accent resize-none" value={settings.ssh.key} onChange={(e) => saveSettings({...settings, ssh: {...settings.ssh, key: e.target.value}})} />
+                       </div>
+                    </motion.div>
+                  )}
+               </div>
+             )}
+          </div>
         </div>
       </motion.div>
     </div>
   );
 }
 
-function TabButton({ active, onClick, label, icon }: { active: boolean; onClick: () => void; label: string; icon: React.ReactNode }) {
+function TabButton({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
   return (
     <button 
       onClick={onClick}
-      className={`flex-1 flex items-center justify-center gap-3 py-4 text-[10px] font-bold uppercase tracking-[0.2em] transition-all border-b-2 ${active ? 'border-brand-accent text-brand-accent' : 'border-transparent opacity-20 hover:opacity-50'}`}
+      className={`w-full flex items-center justify-between px-4 py-3 rounded-sm transition-all ${active ? 'bg-brand-accent/10 text-brand-accent font-bold' : 'opacity-40 hover:opacity-100 hover:bg-white/5'}`}
     >
-      {icon}
-      {label}
-    </button>
-  );
-}
-
-function RuntimeOption({ active, onClick, icon, label, sub }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string; sub: string }) {
-  return (
-    <button 
-      onClick={onClick}
-      className={`p-6 border flex flex-col items-center text-center gap-4 transition-all ${active ? 'border-brand-accent bg-brand-accent/5' : 'border-brand-line hover:border-brand-line/60 bg-black'}`}
-    >
-      <div className={`${active ? 'text-brand-accent' : 'opacity-20'}`}>
+      <div className="flex items-center gap-3">
         {icon}
+        <span className="text-[11px] uppercase tracking-widest">{label}</span>
       </div>
-      <div>
-        <p className={`text-[10px] font-bold uppercase tracking-widest mb-1 ${active ? 'opacity-100' : 'opacity-40'}`}>{label}</p>
-        <p className="text-[9px] opacity-20 font-mono italic">{sub}</p>
-      </div>
+      {active && <ArrowRight size={12} />}
     </button>
-  );
-}
-
-function Toggle({ active, onToggle, danger }: { active: boolean; onToggle: () => void; danger?: boolean }) {
-  return (
-    <button 
-      onClick={onToggle}
-      className={`w-10 h-5 border transition-all relative ${active ? (danger ? 'bg-brand-error border-brand-error' : 'bg-brand-accent border-brand-accent') : 'border-brand-line bg-transparent'}`}
-    >
-      <motion.div 
-        animate={{ x: active ? 20 : 0 }} 
-        className="w-4 h-4 bg-white absolute top-0"
-      />
-    </button>
-  );
-}
-
-function Field({ label, value, onChange, textarea }: { label: string; value: string; onChange: (v: string) => void; textarea?: boolean }) {
-  const Comp = textarea ? 'textarea' : 'input';
-  return (
-    <div className="space-y-2">
-      <label className="text-[9px] uppercase tracking-widest opacity-30 font-mono">{label}</label>
-      <Comp 
-        value={value}
-        onChange={(e: any) => onChange(e.target.value)}
-        className={`w-full bg-black border border-brand-line px-3 py-2 focus:border-brand-accent outline-none text-[10px] font-mono ${textarea ? 'min-h-[80px]' : ''}`}
-      />
-    </div>
   );
 }

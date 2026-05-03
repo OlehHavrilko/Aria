@@ -12,7 +12,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No command provided' }, { status: 400 });
     }
 
-    // Basic heuristic safety - can be bypassed in true "YOLO" mode
     const dangerousCommands = ['rm -rf /', 'mkfs', 'dd'];
     if (!yoloMode && dangerousCommands.some(dc => command.includes(dc))) {
       return NextResponse.json({ 
@@ -23,7 +22,11 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-      const { stdout, stderr } = await execPromise(command, {
+      // Docker-based execution for isolation
+      const escapedCommand = command.replace(/"/g, '\\"');
+      const dockerCommand = `docker run --rm --network=none -v aria_sandbox:/workspace alpine:latest sh -c "${escapedCommand}"`;
+      
+      const { stdout, stderr } = await execPromise(dockerCommand, {
         timeout: 30000, // 30s timeout
         maxBuffer: 1024 * 1024 * 10, // 10MB
       });

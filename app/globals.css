@@ -2,39 +2,36 @@
 @import "tw-animate-css";
 
 @theme {
-  --color-brand-bg: #0a0e1a;
-  --color-brand-ink: #e0e0e0;
-  --color-brand-line: #161b22;
-  --color-brand-accent: var(--accent-color, #3b82f6);
-  --color-brand-warning: #facc15;
-  --color-brand-error: #ef4444;
+  --color-brand-bg: #0d1117;
+  --color-brand-ink: #c9d1d9;
+  --color-brand-line: #30363d;
+  --color-brand-sidebar: #010409;
+  --color-brand-accent: var(--accent-color, #2f81f7);
+  --color-brand-warning: #d29922;
+  --color-brand-error: #f85149;
+  --color-brand-success: #238636;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
   --font-sans: 'Inter', system-ui, sans-serif;
 }
 
 :root {
-  --bg: #0a0e1a;
-  --ink: #e0e0e0;
-  --line: #161b22;
-  --accent-color: #3b82f6;
+  --bg: #0d1117;
+  --ink: #c9d1d9;
+  --line: #30363d;
+  --accent-color: #2f81f7;
 }
 
 [data-theme='red'] {
-  --accent-color: #ef4444;
+  --accent-color: #f85149;
 }
 
 body {
-  background-color: var(--bg);
-  color: var(--ink);
+  background-color: var(--color-brand-bg);
+  color: var(--color-brand-ink);
   font-family: var(--font-sans);
   letter-spacing: -0.01em;
   -webkit-font-smoothing: antialiased;
-}
-
-.glass-panel {
-  background: rgba(10, 14, 26, 0.7);
-  backdrop-filter: blur(20px);
-  border: 1px solid var(--line);
+  overflow: hidden;
 }
 
 .terminal-container .xterm-viewport {
@@ -43,8 +40,8 @@ body {
 
 /* Minimalist Scrollbar */
 ::-webkit-scrollbar {
-  width: 2px;
-  height: 2px;
+  width: 4px;
+  height: 4px;
 }
 
 ::-webkit-scrollbar-track {
@@ -52,25 +49,31 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--line);
+  background: #21262d;
+  border-radius: 2px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-brand-accent);
+  background: var(--color-brand-line);
 }
 
 .mono-text {
   font-family: var(--font-mono);
 }
 
-/* ARIA Character - Precise focus */
-.aria-log-entry {
-  border-left: 2px solid var(--color-brand-line);
-  padding-left: 1rem;
-  margin-bottom: 2rem;
-  transition: border-color 0.3s ease;
+.execution-block {
+  border: 1px solid var(--color-brand-line);
+  background: rgba(22, 27, 34, 0.5);
+  border-left: 3px solid var(--color-brand-accent);
 }
 
-.aria-log-entry:hover {
-  border-left-color: var(--color-brand-accent);
+.status-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
 }
+
+.status-idle { background-color: var(--color-brand-line); }
+.status-thinking { background-color: var(--color-brand-warning); }
+.status-executing { background-color: var(--color-brand-accent); }
+.status-error { background-color: var(--color-brand-error); }

@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-export type ProviderType = 'gemini' | 'anthropic' | 'openai' | 'groq';
+export type ProviderType = 'gemini' | 'anthropic' | 'openai' | 'groq' | 'openrouter' | 'cerebras' | 'ollama' | 'mistral';
 
 export interface Message {
   role: 'user' | 'assistant' | 'system';
@@ -59,6 +59,31 @@ export interface UnifiedResponse {
   toolCalls: ToolCall[];
 }
 
+export async function testConnection(provider: ProviderType, apiKey: string, model: string): Promise<{ success: boolean, latency: number, error?: string }> {
+  const start = Date.now();
+  try {
+     const response = await fetch('/api/ai', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify({ 
+         provider, 
+         apiKey, 
+         model, 
+         messages: [{ role: 'user', content: 'ping' }], 
+         systemInstruction: 'respond with ping' 
+       })
+     });
+     
+     if (!response.ok) throw new Error('Connection failed');
+     const data = await response.json();
+     if (data.error) throw new Error(data.error);
+     
+     return { success: true, latency: Date.now() - start };
+  } catch (e: any) {
+    return { success: false, latency: Date.now() - start, error: e.message };
+  }
+}
+
 export async function chatWithARIA(
   provider: ProviderType,
   apiKey: string,
@@ -106,84 +131,27 @@ async function chatGemini(apiKey: string, modelName: string, messages: Message[]
 }
 
 async function chatAnthropic(apiKey: string, model: string, messages: Message[], systemInstruction: string): Promise<UnifiedResponse> {
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
+  const response = await fetch('/api/ai', {
     method: 'POST',
-    headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-      'dangerously-allow-custom-headers': 'true'
-    },
-    body: JSON.stringify({
-      model,
-      system: systemInstruction,
-      messages: messages.map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content })),
-      tools: ARIA_TOOLS_SPEC.map(t => ({
-        name: t.name,
-        description: t.description,
-        input_schema: t.parameters
-      })),
-      max_tokens: 4096
-    })
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider: 'anthropic', apiKey, model, messages, systemInstruction })
   });
   
   const data = await response.json();
-  if (data.error) throw new Error(data.error.message);
+  if (data.error) throw new Error(data.error);
 
-  let text = '';
-  const toolCalls: ToolCall[] = [];
-
-  data.content.forEach((c: any) => {
-    if (c.type === 'text') text += c.text;
-    if (c.type === 'tool_use') {
-      toolCalls.push({
-        name: c.name,
-        args: c.input,
-        id: c.id
-      });
-    }
-  });
-
-  return { text, toolCalls };
+  return data;
 }
 
 async function chatOpenAICompatible(provider: ProviderType, apiKey: string, model: string, messages: Message[], systemInstruction: string): Promise<UnifiedResponse> {
-  const baseUrl = provider === 'groq' ? 'https://api.groq.com/openai/v1' : 'https://api.openai.com/v1';
-  const response = await fetch(`${baseUrl}/chat/completions`, {
+  const response = await fetch('/api/ai', {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: systemInstruction },
-        ...messages.map(m => ({ 
-          role: m.role === 'assistant' ? 'assistant' : 'user', 
-          content: m.content 
-        }))
-      ],
-      tools: ARIA_TOOLS_SPEC.map(t => ({
-        type: 'function',
-        function: t
-      })),
-      tool_choice: 'auto'
-    })
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider, apiKey, model, messages, systemInstruction })
   });
   
   const data = await response.json();
-  if (data.error) throw new Error(data.error.message);
+  if (data.error) throw new Error(data.error);
 
-  const choice = data.choices[0];
-  const toolCalls: ToolCall[] = choice.message.tool_calls?.map((tc: any) => ({
-    name: tc.function.name,
-    args: JSON.parse(tc.function.arguments),
-    id: tc.id
-  })) || [];
-
-  return {
-    text: choice.message.content || '',
-    toolCalls
-  };
+  return data;
 }

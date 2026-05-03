@@ -1,9 +1,18 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { Send, Terminal as TerminalIcon, Sparkles, Cpu, ShieldAlert, Bot } from 'lucide-react';
-import { chatWithARIA, DEFAULT_SYSTEM_INSTRUCTION, Message, ProviderType } from '@/lib/ai';
+import { 
+  Send, 
+  Sparkles, 
+  Loader2,
+  ChevronRight,
+} from 'lucide-react';
+import { chatWithARIA, ProviderType } from '@/lib/ai';
+import { BUILTIN_SKILLS } from '@/lib/skills';
+import { useAgentStore } from '@/lib/store';
+import ExecutionBlock from './agent/ExecutionBlock';
+import AgentStatus from './agent/AgentStatus';
+import AgentMessage from './agent/AgentMessage';
 
 interface AgentPanelProps {
   onExecute?: (cmd: string) => void;
@@ -12,204 +21,261 @@ interface AgentPanelProps {
 }
 
 const PROVIDERS = [
-  { id: 'gemini', name: 'Gemini', color: '#3b82f6', models: ['gemini-2.0-flash', 'gemini-1.5-pro'] },
-  { id: 'anthropic', name: 'Claude', color: '#f97316', models: ['claude-3-5-sonnet-latest', 'claude-3-5-haiku-latest'] },
-  { id: 'openai', name: 'OpenAI', color: '#10b981', models: ['gpt-4o', 'gpt-4o-mini'] },
-  { id: 'groq', name: 'Groq', color: '#a855f7', models: ['llama-3.3-70b-specdec', 'mixtral-8x7b-32768'] },
+  { id: 'gemini', name: 'Gemini', color: '#2f81f7', models: ['gemini-2.0-flash', 'gemini-1.5-pro'] },
+  { id: 'anthropic', name: 'Claude', color: '#f97316', models: ['claude-3-5-sonnet-latest'] },
+  { id: 'openai', name: 'OpenAI', color: '#238636', models: ['gpt-4o'] },
+  { id: 'groq', name: 'Groq', color: '#a855f7', models: ['llama-3.3-70b-specdec'] },
 ];
 
 export default function AgentPanel({ onExecute, keys = {}, yoloMode }: AgentPanelProps) {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [activeProvider, setActiveProvider] = useState<ProviderType>('gemini');
-  const [activeModel, setActiveModel] = useState('gemini-2.0-flash');
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const { 
+    state, messages, provider, model, 
+    setState, addMessage, setProvider, setModel, setMessages 
+  } = useAgentStore();
 
-  const providerInfo = PROVIDERS.find(p => p.id === activeProvider)!;
+  const [input, setInput] = useState('');
+  const [history, setHistory] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, isLoading]);
+  }, [messages, state]);
 
-  // Update model when provider changes
-  const handleProviderChange = (p: ProviderType) => {
-    setActiveProvider(p);
+  const handleProviderChange = (p: string) => {
+    setProvider(p);
     const info = PROVIDERS.find(info => info.id === p)!;
-    setActiveModel(info.models[0]);
+    setModel(info.models[0]);
   };
 
   const handleSend = async () => {
-    const apiKey = keys[activeProvider];
-    if (!input.trim() || !apiKey) return;
-
-    const userMessage = input;
+    if (!input.trim()) return;
+    
+    const rawInput = input.trim();
     setInput('');
-    const newMessages: Message[] = [...messages, { role: 'user', content: userMessage }];
-    setMessages(newMessages);
-    setIsLoading(true);
+    setHistory(prev => [rawInput, ...prev.slice(0, 49)]);
+    setHistoryIndex(-1);
+
+    // 1. Check for @provider switching
+    if (rawInput.startsWith('@')) {
+      const match = rawInput.match(/^@(\w+)\s*(.*)/);
+      if (match) {
+        const target = match[1].toLowerCase();
+        if (PROVIDERS.some(p => p.id === target)) {
+          handleProviderChange(target);
+          if (!match[2]) return;
+        }
+      }
+    }
+
+    // 2. Check for skills
+    if (rawInput.startsWith('/')) {
+      const skill = BUILTIN_SKILLS.find(s => rawInput.startsWith(s.trigger));
+      if (skill) {
+          if (skill.approval && !confirm(`EXECUTE SYSTEM SKILL: ${skill.name}?`)) return;
+          
+          setState('executing');
+          for (const step of skill.steps) {
+              addMessage({ role: 'assistant', content: `EXECUTE: ${step}` });
+              useAgentStore.getState().addTerminalEntry({ type: 'command', content: step });
+              
+              const shellRes = await fetch('/api/shell', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ command: step, yoloMode: true }),
+              });
+              const shellData = await shellRes.json();
+              const out = shellData.stdout || shellData.stderr || "(Success)";
+              addMessage({ role: 'assistant', content: `OUTPUT: ${out}` });
+              
+              if (shellData.stdout) useAgentStore.getState().addTerminalEntry({ type: 'stdout', content: shellData.stdout });
+              if (shellData.stderr) useAgentStore.getState().addTerminalEntry({ type: 'stderr', content: shellData.stderr });
+          }
+          setState('idle');
+          return;
+      }
+    }
+
+    const apiKey = keys[provider];
+    if (!apiKey) {
+      setState('error');
+      addMessage({ role: 'system', content: `CRITICAL FAULT: Missing Credentials for ${provider.toUpperCase()}` });
+      useAgentStore.getState().addTerminalEntry({ type: 'system', content: `Security Exception: No API key for ${provider}` });
+      return;
+    }
+
+    const newMessages = [...messages, { role: 'user', content: rawInput }];
+    setMessages(newMessages as any);
+    setState('thinking');
+    useAgentStore.getState().addTerminalEntry({ type: 'system', content: `User Intent Received: ${rawInput.substring(0, 30)}...` });
 
     try {
-      let currentMessages = [...newMessages];
       let loopCount = 0;
-      const MAX_LOOPS = 10;
+      const currentMessages: any[] = [...newMessages];
 
-      while (loopCount < MAX_LOOPS) {
+      while (loopCount < 10) {
         const response = await chatWithARIA(
-          activeProvider,
+          provider as ProviderType,
           apiKey,
-          activeModel,
+          model,
           currentMessages,
-          DEFAULT_SYSTEM_INSTRUCTION + (yoloMode ? "\n\nYOLO MODE ACTIVE. EXECUTE DIRECTLY." : "")
+          "You are ARIA, a production-grade systems orchestrator. Use tool 'execute_command' for shell tasks. Be precise, technical, and secure."
         );
 
         if (response.text) {
-          setMessages(prev => [...prev, { role: 'assistant', content: response.text }]);
-          currentMessages.push({ role: 'assistant', content: response.text });
+          addMessage({ role: 'assistant', content: response.text });
+          currentMessages.push({ role: 'assistant', content: response.text } as any);
         }
 
         if (response.toolCalls && response.toolCalls.length > 0) {
-          const toolOutputs = [];
-          
+          setState('executing');
           for (const call of response.toolCalls) {
-            if (call.name === 'run_command') {
+            if (call.name === 'execute_command') {
               const cmd = call.args.command;
-              setMessages(prev => [...prev, { role: 'assistant', content: `[ACTION]: ${cmd}` }]);
+              addMessage({ role: 'assistant', content: `EXECUTE: ${cmd}` });
+              useAgentStore.getState().addTerminalEntry({ type: 'command', content: cmd });
               
               const shellRes = await fetch('/api/shell', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ command: cmd, yoloMode: true }),
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ command: cmd, yoloMode: true }),
               });
               const shellData = await shellRes.json();
               const output = shellData.stdout || shellData.stderr || "(Success)";
+              addMessage({ role: 'assistant', content: `OUTPUT: ${output}` });
               
-              toolOutputs.push(`Tool ${call.name} output: ${output}`);
+              if (shellData.stdout) useAgentStore.getState().addTerminalEntry({ type: 'stdout', content: shellData.stdout });
+              if (shellData.stderr) useAgentStore.getState().addTerminalEntry({ type: 'stderr', content: shellData.stderr });
+
+              currentMessages.push({ 
+                role: 'user', 
+                content: `Command executed: ${cmd}. Output: ${output}` 
+              } as any);
+
               if (onExecute) onExecute(cmd);
             }
-            
-            if (call.name === 'list_files') {
-              const path = call.args.path || '.';
-              const res = await fetch(`/api/fs?path=${encodeURIComponent(path)}`);
-              const data = await res.json();
-              const files = data.files?.map((f: any) => f.name).join(', ') || 'No files found';
-              toolOutputs.push(`Tool ${call.name} output: ${files}`);
-            }
           }
-
-          const toolMsg = `Execution Result:\n${toolOutputs.join('\n')}`;
-          currentMessages.push({ role: 'user', content: toolMsg });
+          setState('thinking');
           loopCount++;
         } else {
-          break; // No more tool calls
+          break;
         }
       }
+      setState('idle');
     } catch (err: any) {
-      setMessages(prev => [...prev, { role: 'system', content: `Neural Fault: ${err.message}` }]);
-    } finally {
-      setIsLoading(false);
+      setState('error');
+      addMessage({ role: 'system', content: `NEURAL CORE FAULT: ${err.message.toUpperCase()}` });
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+    if (e.key === 'ArrowUp') {
+       if (historyIndex < history.length - 1) {
+          const next = historyIndex + 1;
+          setHistoryIndex(next);
+          setInput(history[next]);
+       }
+    }
+    if (e.key === 'ArrowDown') {
+      if (historyIndex > 0) {
+        const next = historyIndex - 1;
+        setHistoryIndex(next);
+        setInput(history[next]);
+      } else if (historyIndex === 0) {
+        setHistoryIndex(-1);
+        setInput('');
+      }
     }
   };
 
   return (
-    <div className="flex flex-col h-full border border-brand-line bg-black overflow-hidden relative">
-      <div className="px-6 py-4 border-b border-brand-line flex items-center justify-between bg-black/40">
-        <div className="flex items-center gap-3">
-          <select 
-            value={activeProvider}
-            onChange={(e) => handleProviderChange(e.target.value as ProviderType)}
-            className="bg-transparent text-[10px] uppercase tracking-widest font-black focus:outline-none opacity-40 hover:opacity-100 transition-opacity cursor-pointer appearance-none text-brand-accent"
-          >
-            {PROVIDERS.map(p => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
-          <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: providerInfo.color }} />
-          <div className="h-4 w-px bg-brand-line" />
-          <select 
-            value={activeModel}
-            onChange={(e) => setActiveModel(e.target.value)}
-            className="bg-transparent text-[9px] uppercase tracking-widest font-bold focus:outline-none opacity-40 hover:opacity-100 transition-opacity cursor-pointer appearance-none"
-          >
-            {providerInfo.models.map(m => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </select>
+    <div className="flex flex-col h-full bg-[#0d1117] relative">
+      <div className="h-12 border-b border-brand-line flex items-center justify-between px-6 bg-black/20">
+        <div className="flex items-center gap-4">
+          <AgentStatus />
+          <div className="h-3 w-px bg-brand-line" />
+          <div className="flex items-center gap-2 opacity-40">
+             <span className="text-[9px] font-bold uppercase tracking-widest leading-none">Substrate Active</span>
+          </div>
         </div>
-        {yoloMode && <span className="text-[9px] text-brand-error font-mono font-bold animate-pulse">YOLO</span>}
+        
+        <div className="flex items-center gap-4">
+          <select 
+            value={provider}
+            onChange={(e) => handleProviderChange(e.target.value)}
+            className="bg-black/40 border border-brand-line rounded-sm px-2 py-1 text-[9px] font-bold uppercase tracking-widest text-brand-accent focus:outline-none"
+          >
+            {PROVIDERS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          {yoloMode && <div className="text-[9px] bg-brand-error/10 text-brand-error border border-brand-error/20 px-2 py-0.5 rounded-sm font-black animate-pulse">YOLO</div>}
+        </div>
       </div>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
+      <div 
+        ref={scrollRef} 
+        className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar"
+      >
         {messages.length === 0 && (
-          <div className="h-full flex flex-col items-center justify-center text-center opacity-20 space-y-6">
-            <div className="text-6xl font-black">Λ</div>
-            <p className="text-xs uppercase tracking-widest">Awaiting Command Input</p>
+          <div className="h-full flex flex-col items-center justify-center opacity-10 text-center">
+            <Sparkles size={48} className="mb-6 animate-pulse" />
+            <h4 className="text-sm font-bold uppercase tracking-[0.3em] mb-2">Neural Link Ready</h4>
+            <p className="text-[10px] max-w-[200px] leading-relaxed font-mono italic">Awaiting Operator Intent Protocol...</p>
           </div>
         )}
-        <AnimatePresence>
-          {messages.map((m, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
-              <div className={`max-w-[90%] ${m.role === 'user' ? 'text-right' : 'text-left'}`}>
-                <div className="text-[10px] uppercase tracking-widest opacity-30 mb-2 font-mono">
-                  {m.role === 'user' ? 'Input' : m.content.startsWith('[ACTION]') ? 'Runtime' : 'ARIA'}
-                </div>
-                <div className={`
-                  ${m.content.startsWith('[ACTION]') 
-                    ? 'p-3 bg-brand-line/10 border border-brand-line text-[10px] font-mono opacity-60' 
-                    : m.role === 'system'
-                    ? 'text-brand-error text-xs font-bold italic'
-                    : 'text-xs font-light leading-relaxed text-brand-ink/90 whitespace-pre-wrap'
-                  }
-                `}>
-                  {m.content}
-                </div>
-              </div>
-            </motion.div>
-          ))}
-        </AnimatePresence>
-        {isLoading && (
-          <div className="flex gap-1.5 opacity-20">
-            <div className="w-1 h-1 bg-brand-accent animate-bounce" />
-            <div className="w-1 h-1 bg-brand-accent animate-bounce [animation-delay:0.2s]" />
-            <div className="w-1 h-1 bg-brand-accent animate-bounce [animation-delay:0.4s]" />
-          </div>
+
+        {messages.map((m, i) => {
+          if (m.content.startsWith('EXECUTE:')) {
+             const cmd = m.content.replace('EXECUTE:', '').trim();
+             const outputMsg = messages[i+1]?.content.startsWith('OUTPUT:') ? messages[i+1].content.replace('OUTPUT:', '').trim() : undefined;
+             return <ExecutionBlock key={i} command={cmd} output={outputMsg} status={outputMsg ? 'success' : 'running'} />;
+          }
+          if (m.content.startsWith('OUTPUT:')) return null;
+
+          return <AgentMessage key={i} role={m.role as any} content={m.content} />;
+        })}
+        
+        {state === 'thinking' && (
+           <div className="flex items-center gap-3 opacity-30 text-[10px] font-mono italic px-10">
+              <Loader2 size={12} className="animate-spin" /> Async Processing...
+           </div>
         )}
       </div>
 
-      <div className="p-6 border-t border-brand-line bg-black">
-        {!keys[activeProvider] ? (
-          <div className="text-[9px] text-brand-error uppercase tracking-widest font-bold opacity-60 mb-2">
-            No API key for {activeProvider.toUpperCase()}
+      <div className="p-4 border-t border-brand-line bg-black/40">
+        <div className="relative group">
+          <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-2 opacity-20 group-focus-within:opacity-100 group-focus-within:text-brand-accent transition-all">
+            <ChevronRight size={14} />
           </div>
-        ) : null}
-        <div className="relative group flex items-end gap-4">
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
-            placeholder="Describe intent..."
-            className="flex-1 bg-transparent border-b border-brand-line focus:border-brand-accent py-2 resize-none focus:outline-none text-xs font-mono tracking-wide placeholder:opacity-20 transition-all min-h-[40px] max-h-[200px]"
+            onKeyDown={handleKeyDown}
+            placeholder="INPUT COMMAND OR TRIGGER (/) ..."
+            className="w-full bg-black border border-brand-line rounded-sm pl-10 pr-12 py-3 focus:border-brand-accent outline-none text-xs font-mono tracking-tight placeholder:opacity-20 resize-none min-h-[48px] max-h-[200px]"
             rows={1}
           />
           <button
             onClick={handleSend}
-            disabled={!input.trim() || isLoading || !keys[activeProvider]}
-            className="p-1 opacity-20 hover:opacity-100 disabled:opacity-0 transition-all text-brand-accent mb-2"
+            disabled={!input.trim() || state === 'thinking' || state === 'executing'}
+            className="absolute right-4 top-1/2 -translate-y-1/2 opacity-20 hover:opacity-100 disabled:opacity-0 transition-all text-brand-accent"
           >
-            <Send className="w-4 h-4" />
+            <Send size={14} />
           </button>
+        </div>
+        <div className="mt-2 flex items-center justify-between px-1">
+           <div className="flex gap-4 opacity-20 text-[8px] font-bold uppercase tracking-widest leading-none">
+              <span>Shift+Enter Node</span>
+              <span>↑/↓ Command History</span>
+           </div>
+           <div className="flex gap-4 opacity-40 text-[8px] font-bold uppercase tracking-widest leading-none">
+              <span>{provider} context: {model}</span>
+           </div>
         </div>
       </div>
     </div>
