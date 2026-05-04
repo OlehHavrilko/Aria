@@ -5,17 +5,35 @@ import { motion } from 'motion/react';
 import { Activity, Globe, Info, Zap, Layers } from 'lucide-react';
 
 export default function InfoPanel() {
-  const [metrics, setMetrics] = useState({ cpu: '2%', mem: '128MB', ports: [] as number[] });
+  const [metrics, setMetrics] = useState({ 
+    cpu: '0%', 
+    mem: '0MB', 
+    memPercent: 0,
+    cpuPercent: 0,
+    nodeVersion: '...',
+    uptime: '0s'
+  });
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      // Simulated realtime metrics
-      setMetrics(prev => ({
-        ...prev,
-        cpu: `${Math.floor(Math.random() * 5 + 1)}%`,
-        mem: `${Math.floor(Math.random() * 20 + 200)}MB`
-      }));
-    }, 3000);
+    const fetchMetrics = async () => {
+      try {
+        const res = await fetch('/api/metrics');
+        const data = await res.json();
+        setMetrics({
+          cpu: `${data.cpu.percentage.toFixed(1)}%`,
+          mem: `${Math.floor(data.memory.heapUsed / 1024 / 1024)}MB`,
+          memPercent: data.memory.percentage,
+          cpuPercent: data.cpu.percentage,
+          nodeVersion: data.nodeVersion,
+          uptime: `${data.uptime}s`
+        });
+      } catch (err) {
+        console.error('Failed to fetch metrics', err);
+      }
+    };
+
+    fetchMetrics();
+    const interval = setInterval(fetchMetrics, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -33,8 +51,8 @@ export default function InfoPanel() {
             <span className="text-[10px] font-bold uppercase tracking-widest">Realtime Usage</span>
           </div>
           <div className="space-y-4">
-            <MetricBar label="CPU Load" value={metrics.cpu} progress={parseInt(metrics.cpu)} />
-            <MetricBar label="Memory" value={metrics.mem} progress={30} />
+            <MetricBar label="CPU Load" value={metrics.cpu} progress={metrics.cpuPercent} />
+            <MetricBar label="Heap Memory" value={metrics.mem} progress={metrics.memPercent} />
           </div>
         </section>
 
@@ -58,15 +76,16 @@ export default function InfoPanel() {
             <span className="text-[10px] font-bold uppercase tracking-widest">Runtime Environment</span>
           </div>
           <div className="space-y-2 text-[10px] font-mono">
-            <EnvItem label="NODE_VERSION" value="v20.x" />
-            <EnvItem label="SHELL" value="/bin/bash" />
+            <EnvItem label="NODE_VERSION" value={metrics.nodeVersion} />
+            <EnvItem label="UPTIME" value={metrics.uptime} />
+            <EnvItem label="PLATFORM" value="Alpine Linux" />
             <EnvItem label="YOLO_ACTIVE" value="true" />
           </div>
         </section>
 
         <section className="pt-4 mt-8 border-t border-brand-line">
            <div className="text-[9px] opacity-30 leading-relaxed italic">
-             "The observer is the observed. The plan is the action."
+             &ldquo;The observer is the observed. The plan is the action.&rdquo;
            </div>
         </section>
       </div>

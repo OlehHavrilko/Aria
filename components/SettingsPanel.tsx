@@ -23,6 +23,10 @@ const PROVIDERS = [
   { id: 'anthropic', name: 'Anthropic Claude', color: '#f97316', model: 'claude-3-5-sonnet-latest' },
   { id: 'openai', name: 'OpenAI GPT', color: '#238636', model: 'gpt-4o' },
   { id: 'groq', name: 'Groq Llama', color: '#a855f7', model: 'llama-3.3-70b-specdec' },
+  { id: 'openrouter', name: 'OpenRouter', color: '#7c3aed', model: 'google/gemini-2.0-flash-001' },
+  { id: 'cerebras', name: 'Cerebras', color: '#ec4899', model: 'llama3.1-70b' },
+  { id: 'mistral', name: 'Mistral', color: '#f59e0b', model: 'mistral-large-latest' },
+  { id: 'ollama', name: 'Ollama', color: '#4b5563', model: 'llama3' },
 ];
 
 interface SettingsPanelProps {

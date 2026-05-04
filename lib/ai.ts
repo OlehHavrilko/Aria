@@ -98,6 +98,10 @@ export async function chatWithARIA(
       return chatAnthropic(apiKey, model, messages, systemInstruction);
     case 'openai':
     case 'groq':
+    case 'openrouter':
+    case 'cerebras':
+    case 'mistral':
+    case 'ollama':
       return chatOpenAICompatible(provider, apiKey, model, messages, systemInstruction);
     default:
       throw new Error(`Unsupported provider: ${provider}`);

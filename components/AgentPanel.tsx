@@ -23,8 +23,12 @@ interface AgentPanelProps {
 const PROVIDERS = [
   { id: 'gemini', name: 'Gemini', color: '#2f81f7', models: ['gemini-2.0-flash', 'gemini-1.5-pro'] },
   { id: 'anthropic', name: 'Claude', color: '#f97316', models: ['claude-3-5-sonnet-latest'] },
-  { id: 'openai', name: 'OpenAI', color: '#238636', models: ['gpt-4o'] },
+  { id: 'openai', name: 'OpenAI', color: '#238636', models: ['gpt-4o', 'o1-preview'] },
   { id: 'groq', name: 'Groq', color: '#a855f7', models: ['llama-3.3-70b-specdec'] },
+  { id: 'openrouter', name: 'OpenRouter', color: '#7c3aed', models: ['google/gemini-2.0-flash-001', 'anthropic/claude-3.5-sonnet'] },
+  { id: 'cerebras', name: 'Cerebras', color: '#ec4899', models: ['llama3.1-70b', 'llama3.1-8b'] },
+  { id: 'mistral', name: 'Mistral', color: '#f59e0b', models: ['mistral-large-latest', 'pixtral-large-latest'] },
+  { id: 'ollama', name: 'Ollama', color: '#4b5563', models: ['llama3', 'mistral', 'phi3'] },
 ];
 
 export default function AgentPanel({ onExecute, keys = {}, yoloMode }: AgentPanelProps) {
@@ -74,10 +78,12 @@ export default function AgentPanel({ onExecute, keys = {}, yoloMode }: AgentPane
     if (rawInput.startsWith('/')) {
       const skill = BUILTIN_SKILLS.find(s => rawInput.startsWith(s.trigger));
       if (skill) {
+          const args = rawInput.replace(skill.trigger, '').trim();
           if (skill.approval && !confirm(`EXECUTE SYSTEM SKILL: ${skill.name}?`)) return;
           
           setState('executing');
-          for (const step of skill.steps) {
+          for (const rawStep of skill.steps) {
+              const step = rawStep.replace('{message}', args || 'auto-commit');
               addMessage({ role: 'assistant', content: `EXECUTE: ${step}` });
               useAgentStore.getState().addTerminalEntry({ type: 'command', content: step });
               
